@@ -150,82 +150,67 @@ TabMain:AddSlider({
     end
 })
 
--- 🔫 Combat Tab
-local TabCombat = Window:MakeTab({
-    Title = "Combat",
-    Icon = "rbxassetid://7072706620" -- Sword icon
-})
-TabCombat:AddSection("Combat")
+-- No Clip
+local noclipEnabled = false
+local noclipConnection = nil
 
--- Kill Aura
-local killAuraEnabled = false
-local killAuraRange = 50
-local killAuraConnection = nil
-
-local function isNPC(model)
-    if not model:IsA("Model") then return false end
-    if model:FindFirstChild("PlayerScripts") then return false end
-    if model == character then return false end
-    return model:FindFirstChildOfClass("Humanoid") ~= nil
-end
-
-local function killNPC(npc)
-    if not npc or not npc.Parent then return end
-    
-    local humanoid = npc:FindFirstChildOfClass("Humanoid")
-    if humanoid and humanoid.Health > 0 then
-        humanoid.Health = 0
+local function noclipLoop()
+    if character then
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
     end
 end
 
-TabCombat:AddToggle({
-    Name = "Kill Aura (NPCs Only)",
+TabMain:AddToggle({
+    Name = "No Clip",
     Default = false,
     Callback = function(value)
-        killAuraEnabled = value
+        noclipEnabled = value
         
-        if killAuraConnection then
-            killAuraConnection:Disconnect()
-            killAuraConnection = nil
+        if noclipConnection then
+            noclipConnection:Disconnect()
+            noclipConnection = nil
         end
         
         if value then
-            killAuraConnection = RunService.Heartbeat:Connect(function()
-                if not character or not character.PrimaryPart then return end
-                
-                for _, npc in ipairs(workspace:GetDescendants()) do
-                    if isNPC(npc) then
-                        local rootPart = npc:FindFirstChild("HumanoidRootPart") or npc.PrimaryPart
-                        if rootPart then
-                            local distance = (character.PrimaryPart.Position - rootPart.Position).Magnitude
-                            if distance <= killAuraRange then
-                                killNPC(npc)
-                            end
-                        end
-                    end
-                end
-            end)
+            noclipConnection = RunService.Stepped:Connect(noclipLoop)
         end
     end
 })
 
-TabCombat:AddSlider({
-    Name = "Kill Aura Range",
-    Min = 10,
-    Max = 100,
-    Default = 50,
-    Color = Color3.fromRGB(255, 0, 0),
-    Increment = 1,
-    ValueName = "Studs",
+-- No Fall Damage
+local noFallDamageEnabled = false
+local originalStateChanged
+
+TabMain:AddToggle({
+    Name = "No Fall Damage",
+    Default = false,
     Callback = function(value)
-        killAuraRange = value
+        noFallDamageEnabled = value
+        
+        if value then
+            originalStateChanged = humanoid.StateChanged
+            
+            humanoid.StateChanged:Connect(function(_, newState)
+                if newState == Enum.HumanoidStateType.FallingDown or newState == Enum.HumanoidStateType.PlatformStanding then
+                    humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                end
+            end)
+        else
+            if originalStateChanged then
+                humanoid.StateChanged = originalStateChanged
+            end
+        end
     end
 })
 
 -- 📦 Bring Tab
 local TabBring = Window:MakeTab({
     Title = "Bring",
-    Icon = "rbxassetid://44833679421829"
+    Icon = "rbxassetid://126235770836058"  -- Custom icon ID
 })
 TabBring:AddSection("Bring Items")
 
@@ -247,7 +232,7 @@ local function bringItems(itemName, offsetY)
 end
 
 TabBring:AddButton({
-    Name = "Bring all Log",
+    Name = "Bring all Logs",
     Callback = function()
         bringItems("Log")
     end
@@ -267,144 +252,193 @@ TabBring:AddButton({
     end
 })
 
--- 🧿 ESP Tab
-local TabESP = Window:MakeTab({
-    Title = "ESP",
-    Icon = "rbxassetid://100059899467593"
+-- 🛡️ Defense Tab
+local TabDefense = Window:MakeTab({
+    Title = "Defense",
+    Icon = "rbxassetid://90617532970599"  -- Custom icon ID
 })
-TabESP:AddSection("Visuals")
+TabDefense:AddSection("Defense")
 
-local espChests = {}
-local espChestEnabled = false
-local chestConnection = nil
+-- God Mode
+local godModeEnabled = false
 
-local function createESP(chest)
-    if not chest or not chest.Parent or espChests[chest] then return end
+TabDefense:AddToggle({
+    Name = "God Mode",
+    Default = false,
+    Callback = function(value)
+        godModeEnabled = value
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:SetAttribute("GodMode", value)
+            end
+        end
+    end
+})
 
-    local part = chest:FindFirstChildWhichIsA("BasePart") or chest.PrimaryPart
-    if not part then return end
+-- No Animal Aggro
+local noAggroEnabled = false
+local noAggroConnection = nil
 
-    local hl = Instance.new("Highlight")
-    hl.Name = "ESP_Highlight"
-    hl.FillColor = Color3.fromRGB(255, 255, 0)
-    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-    hl.FillTransparency = 0.3
-    hl.OutlineTransparency = 0
-    hl.Adornee = chest
-    hl.Parent = chest
-
-    local bb = Instance.new("BillboardGui")
-    bb.Name = "ESP_Billboard"
-    bb.Adornee = part
-    bb.Size = UDim2.new(0, 100, 0, 40)
-    bb.AlwaysOnTop = true
-    bb.Parent = chest
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, 0, 1, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.TextColor3 = Color3.fromRGB(255, 255, 0)
-    lbl.TextStrokeTransparency = 0
-    lbl.TextScaled = true
-    lbl.Font = Enum.Font.SourceSansBold
-    lbl.Text = "Item Chest"
-    lbl.Parent = bb
-
-    local prompt = chest:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if prompt then
-        if not prompt.Enabled or not prompt.Visible then
-            lbl.Text = "Collected"
-            lbl.TextColor3 = Color3.fromRGB(255, 0, 0)
-        else
-            local connection
-            connection = prompt.Triggered:Connect(function()
-                lbl.Text = "Collected"
-                lbl.TextColor3 = Color3.fromRGB(255, 0, 0)
-                if connection then
-                    connection:Disconnect()
-                end
-            end)
-            
-            prompt:GetPropertyChangedSignal("Enabled"):Connect(function()
-                if not prompt.Enabled then
-                    lbl.Text = "Collected"
-                    lbl.TextColor3 = Color3.fromRGB(255, 0, 0)
-                    if connection then
-                        connection:Disconnect()
+TabDefense:AddToggle({
+    Name = "No Animal Aggression",
+    Default = false,
+    Callback = function(value)
+        noAggroEnabled = value
+        
+        if noAggroConnection then
+            noAggroConnection:Disconnect()
+            noAggroConnection = nil
+        end
+        
+        if value then
+            noAggroConnection = RunService.Heartbeat:Connect(function()
+                if character then
+                    for _, npc in ipairs(workspace:GetDescendants()) do
+                        if npc:IsA("Model") and (npc.Name:find("Wolf") or npc.Name:find("Bunny")) then
+                            local humanoid = npc:FindFirstChildOfClass("Humanoid")
+                            if humanoid then
+                                humanoid:SetAttribute("IgnorePlayer", true)
+                            end
+                        end
                     end
                 end
             end)
         end
-    else
-        lbl.Text = "Collected"
-        lbl.TextColor3 = Color3.fromRGB(255, 0, 0)
     end
+})
 
-    espChests[chest] = {
-        highlight = hl,
-        billboard = bb,
-        label = lbl,
-        prompt = prompt
-    }
-end
+-- 👁️ Visual Tab
+local TabVisual = Window:MakeTab({
+    Title = "Visual",
+    Icon = "rbxassetid://117867833889560"  -- Custom icon ID
+})
+TabVisual:AddSection("Visual")
 
-local function removeAllESPs()
-    for chest, data in pairs(espChests) do
-        if data.highlight then 
-            pcall(function() data.highlight:Destroy() end)
-        end
-        if data.billboard then 
-            pcall(function() data.billboard:Destroy() end)
-        end
-    end
-    table.clear(espChests)
-end
+-- Brightness Boost
+local brightnessEnabled = false
+local originalBrightness = Lighting.Brightness
 
-local function updateESPs()
-    removeAllESPs()
-    if not espChestEnabled then return end
-    
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") and obj.Name == "Item Chest" then
-            createESP(obj)
-        end
-    end
-end
-
-TabESP:AddToggle({
-    Name = "ESP Chest",
+TabVisual:AddToggle({
+    Name = "Brightness Boost",
     Default = false,
-    Callback = function(state)
-        espChestEnabled = state
-        
-        if chestConnection then
-            chestConnection:Disconnect()
-            chestConnection = nil
-        end
-        
-        if state then
-            updateESPs()
-            chestConnection = workspace.DescendantAdded:Connect(function(obj)
-                if obj:IsA("Model") and obj.Name == "Item Chest" then
-                    task.wait(0.5)
-                    createESP(obj)
-                end
-            end)
+    Callback = function(value)
+        brightnessEnabled = value
+        if value then
+            Lighting.Brightness = 2
+            Lighting.ClockTime = 12
         else
-            removeAllESPs()
+            Lighting.Brightness = originalBrightness
         end
     end
 })
+
+-- Fullbright
+local fullbrightEnabled = false
+
+TabVisual:AddToggle({
+    Name = "Fullbright",
+    Default = false,
+    Callback = function(value)
+        fullbrightEnabled = value
+        if value then
+            Lighting.Ambient = Color3.new(1, 1, 1)
+            Lighting.GlobalShadows = false
+        else
+            Lighting.Ambient = Color3.new(0.5, 0.5, 0.5)
+            Lighting.GlobalShadows = true
+        end
+    end
+})
+
+-- FOV Changer
+local fovEnabled = false
+local currentFOV = 70
+local fovConnection = nil
+
+TabVisual:AddToggle({
+    Name = "FOV Changer",
+    Default = false,
+    Callback = function(value)
+        fovEnabled = value
+        
+        if fovConnection then
+            fovConnection:Disconnect()
+            fovConnection = nil
+        end
+        
+        if value then
+            fovConnection = RunService.RenderStepped:Connect(function()
+                if workspace.CurrentCamera then
+                    workspace.CurrentCamera.FieldOfView = currentFOV
+                end
+            end)
+        elseif workspace.CurrentCamera then
+            workspace.CurrentCamera.FieldOfView = 70
+        end
+    end
+})
+
+TabVisual:AddSlider({
+    Name = "FOV Value",
+    Min = 70,
+    Max = 120,
+    Default = 70,
+    Color = Color3.fromRGB(255, 255, 255),
+    Increment = 1,
+    ValueName = "FOV",
+    Callback = function(value)
+        currentFOV = value
+        if fovEnabled and workspace.CurrentCamera then
+            workspace.CurrentCamera.FieldOfView = value
+        end
+    end
+})
+
+-- 🗺️ Map Tab
+local TabMap = Window:MakeTab({
+    Title = "Map",
+    Icon = "rbxassetid://105948035084832"  -- Custom icon ID
+})
+TabMap:AddSection("Map")
+
+-- Teleport Waypoints
+local waypoints = {
+    ["Bonfire"] = CFrame.new(0.32, 6.15, -0.22),
+    ["Cabin"] = CFrame.new(-100, 5, 50), -- Adjust coordinates as needed
+    ["River"] = CFrame.new(150, 3, -200) -- Adjust coordinates as needed
+}
+
+for name, cf in pairs(waypoints) do
+    TabMap:AddButton({
+        Name = "Teleport to "..name,
+        Callback = function()
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                character.HumanoidRootPart.CFrame = cf
+            end
+        end
+    })
+end
 
 -- Cleanup on script termination
 game:GetService("Players").PlayerRemoving:Connect(function(player)
     if player == LocalPlayer then
         if teleportConnection then teleportConnection:Disconnect() end
         if jumpConnection then jumpConnection:Disconnect() end
-        if chestConnection then chestConnection:Disconnect() end
         if speedConnection then speedConnection:Disconnect() end
-        if killAuraConnection then killAuraConnection:Disconnect() end
-        removeAllESPs()
+        if noclipConnection then noclipConnection:Disconnect() end
+        if noAggroConnection then noAggroConnection:Disconnect() end
+        if fovConnection then fovConnection:Disconnect() end
+        
+        -- Reset visual changes
+        Lighting.Brightness = originalBrightness
+        Lighting.Ambient = Color3.new(0.5, 0.5, 0.5)
+        Lighting.GlobalShadows = true
+        
+        if workspace.CurrentCamera then
+            workspace.CurrentCamera.FieldOfView = 70
+        end
+        
         if humanoid then
             humanoid.WalkSpeed = 16
         end
